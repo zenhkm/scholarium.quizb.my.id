@@ -137,5 +137,6 @@ $updatedAt = '28 Desember 2025';
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="click-tracker.js"></script>
 </body>
 </html>
