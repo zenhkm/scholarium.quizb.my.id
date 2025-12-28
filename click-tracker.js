@@ -3,6 +3,14 @@
 
   var endpoint = 'track_click.php';
 
+  function normalizeLabel(raw) {
+    if (!raw) return '';
+    var s = String(raw);
+    s = s.replace(/\s+/g, ' ').trim();
+    if (s.length > 200) s = s.slice(0, 200);
+    return s;
+  }
+
   function shouldIgnoreHref(href) {
     if (!href) return true;
     if (href[0] === '#') return true;
@@ -15,11 +23,12 @@
     return false;
   }
 
-  function sendClick(targetUrl) {
+  function sendClick(targetUrl, label) {
     try {
       var payload = {
         target: targetUrl,
-        source: window.location.pathname + window.location.search
+        source: window.location.pathname + window.location.search,
+        label: label || ''
       };
 
       var bodyJson = JSON.stringify(payload);
@@ -60,7 +69,15 @@
         // Prevent recursive self-tracking
         if (absUrl.indexOf(endpoint) !== -1) return;
 
-        sendClick(absUrl);
+        var label = '';
+        var explicit = el.getAttribute('data-track-label');
+        if (explicit) {
+          label = normalizeLabel(explicit);
+        } else {
+          label = normalizeLabel(el.getAttribute('title') || el.textContent || '');
+        }
+
+        sendClick(absUrl, label);
       } catch (err) {
         // ignore
       }

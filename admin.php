@@ -63,20 +63,27 @@ $recent = clicks_get_recent(100);
         <table class="table table-striped table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
-              <th style="width: 60%">Target (file / URL)</th>
+              <th style="width: 45%">Nama</th>
+              <th style="width: 25%">Target (URL)</th>
               <th style="width: 10%" class="text-end">Total</th>
               <th style="width: 30%">Terakhir klik (UTC)</th>
             </tr>
           </thead>
           <tbody>
             <?php if (empty($summary)): ?>
-              <tr><td colspan="3" class="text-muted p-3">Belum ada data klik.</td></tr>
+              <tr><td colspan="4" class="text-muted p-3">Belum ada data klik.</td></tr>
             <?php else: ?>
               <?php foreach ($summary as $row): ?>
                 <tr>
                   <td class="text-break">
-                    <a href="<?php echo htmlspecialchars($row['target']); ?>" target="_blank" rel="noopener">
-                      <?php echo htmlspecialchars($row['target']); ?>
+                    <?php
+                      $label = trim((string)($row['label'] ?? ''));
+                      echo htmlspecialchars($label !== '' ? $label : (string)($row['target'] ?? ''));
+                    ?>
+                  </td>
+                  <td class="text-break small">
+                    <a href="<?php echo htmlspecialchars((string)($row['target'] ?? '')); ?>" target="_blank" rel="noopener">
+                      <?php echo htmlspecialchars((string)($row['target'] ?? '')); ?>
                     </a>
                   </td>
                   <td class="text-end"><?php echo (int)($row['total'] ?? 0); ?></td>
@@ -98,18 +105,25 @@ $recent = clicks_get_recent(100);
           <thead class="table-light">
             <tr>
               <th style="width: 18%">Waktu (UTC)</th>
-              <th style="width: 42%">Target</th>
+              <th style="width: 26%">Nama</th>
+              <th style="width: 34%">Target</th>
               <th style="width: 28%">Sumber</th>
               <th style="width: 12%">IP</th>
             </tr>
           </thead>
           <tbody>
             <?php if (empty($recent)): ?>
-              <tr><td colspan="4" class="text-muted p-3">Belum ada data klik.</td></tr>
+              <tr><td colspan="5" class="text-muted p-3">Belum ada data klik.</td></tr>
             <?php else: ?>
               <?php foreach ($recent as $row): ?>
                 <tr>
                   <td><?php echo htmlspecialchars((string)($row['created_at'] ?? '')); ?></td>
+                  <td class="text-break">
+                    <?php
+                      $label = trim((string)($row['label'] ?? ''));
+                      echo htmlspecialchars($label !== '' ? $label : (string)($row['target'] ?? ''));
+                    ?>
+                  </td>
                   <td class="text-break"><?php echo htmlspecialchars((string)($row['target'] ?? '')); ?></td>
                   <td class="text-break"><?php echo htmlspecialchars((string)($row['source'] ?? '')); ?></td>
                   <td><?php echo htmlspecialchars((string)($row['ip'] ?? '')); ?></td>

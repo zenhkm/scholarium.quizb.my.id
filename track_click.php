@@ -36,6 +36,7 @@ function parse_payload(): array {
 $payload = parse_payload();
 $target = trim((string)($payload['target'] ?? ''));
 $source = trim((string)($payload['source'] ?? ''));
+$label = trim((string)($payload['label'] ?? ''));
 
 // Basic allow-list: only store reasonably-sized strings
 if ($target === '' || strlen($target) > 2000) {
@@ -49,6 +50,7 @@ $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 clicks_store([
     'created_at' => gmdate('c'),
     'target' => $target,
+    'label' => $label,
     'source' => $source,
     'ip' => $ip,
     'user_agent' => $ua,

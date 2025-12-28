@@ -25,12 +25,24 @@ function clicks_try_pdo_sqlite(): ?PDO {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TEXT NOT NULL,
             target TEXT NOT NULL,
+            label TEXT,
             source TEXT,
             ip TEXT,
             user_agent TEXT
         )');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_clicks_target ON clicks(target)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_clicks_created ON clicks(created_at)');
+
+        // Migrate older DBs that don't have the label column yet.
+        $cols = $pdo->query("PRAGMA table_info(clicks)")->fetchAll(PDO::FETCH_ASSOC);
+        $hasLabel = false;
+        foreach ($cols as $c) {
+            if (isset($c['name']) && $c['name'] === 'label') { $hasLabel = true; break; }
+        }
+        if (!$hasLabel) {
+            $pdo->exec('ALTER TABLE clicks ADD COLUMN label TEXT');
+        }
+
         return $pdo;
     } catch (Throwable $e) {
         return null;
@@ -40,6 +52,7 @@ function clicks_try_pdo_sqlite(): ?PDO {
 function clicks_store(array $row): void {
     $createdAt = $row['created_at'] ?? gmdate('c');
     $target = (string)($row['target'] ?? '');
+    $label = (string)($row['label'] ?? '');
     $source = (string)($row['source'] ?? '');
     $ip = (string)($row['ip'] ?? '');
     $ua = (string)($row['user_agent'] ?? '');
@@ -49,16 +62,19 @@ function clicks_store(array $row): void {
 
     // Basic length limits to avoid abuse
     if (strlen($target) > 2000) $target = substr($target, 0, 2000);
+    $label = trim($label);
+    if (strlen($label) > 200) $label = substr($label, 0, 200);
     if (strlen($source) > 500) $source = substr($source, 0, 500);
     if (strlen($ip) > 80) $ip = substr($ip, 0, 80);
     if (strlen($ua) > 300) $ua = substr($ua, 0, 300);
 
     $pdo = clicks_try_pdo_sqlite();
     if ($pdo) {
-        $stmt = $pdo->prepare('INSERT INTO clicks(created_at, target, source, ip, user_agent) VALUES(:created_at, :target, :source, :ip, :ua)');
+        $stmt = $pdo->prepare('INSERT INTO clicks(created_at, target, label, source, ip, user_agent) VALUES(:created_at, :target, :label, :source, :ip, :ua)');
         $stmt->execute([
             ':created_at' => $createdAt,
             ':target' => $target,
+            ':label' => $label,
             ':source' => $source,
             ':ip' => $ip,
             ':ua' => $ua,
@@ -70,6 +86,7 @@ function clicks_store(array $row): void {
     $line = json_encode([
         'created_at' => $createdAt,
         'target' => $target,
+        'label' => $label,
         'source' => $source,
         'ip' => $ip,
         'user_agent' => $ua,
@@ -92,7 +109,8 @@ function clicks_get_summary(int $limit = 200): array {
 
     $pdo = clicks_try_pdo_sqlite();
     if ($pdo) {
-        $stmt = $pdo->query('SELECT target, COUNT(*) AS total, MAX(created_at) AS last_at FROM clicks GROUP BY target ORDER BY total DESC, last_at DESC LIMIT ' . (int)$limit);
+        // label is best-effort (can be empty or vary), so we keep a representative value.
+        $stmt = $pdo->query('SELECT target, MAX(label) AS label, COUNT(*) AS total, MAX(created_at) AS last_at FROM clicks GROUP BY target ORDER BY total DESC, last_at DESC LIMIT ' . (int)$limit);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -102,6 +120,7 @@ function clicks_get_summary(int $limit = 200): array {
 
     $counts = [];
     $lastAt = [];
+    $labels = [];
 
     $fp = @fopen($path, 'rb');
     if (!$fp) return [];
@@ -113,6 +132,8 @@ function clicks_get_summary(int $limit = 200): array {
         $t = (string)($row['target'] ?? '');
         if ($t === '') continue;
         $counts[$t] = ($counts[$t] ?? 0) + 1;
+        $lbl = trim((string)($row['label'] ?? ''));
+        if ($lbl !== '' && !isset($labels[$t])) $labels[$t] = $lbl;
         $ts = (string)($row['created_at'] ?? '');
         if ($ts !== '') {
             if (!isset($lastAt[$t]) || strcmp($ts, $lastAt[$t]) > 0) $lastAt[$t] = $ts;
@@ -122,7 +143,7 @@ function clicks_get_summary(int $limit = 200): array {
 
     $out = [];
     foreach ($counts as $t => $c) {
-        $out[] = ['target' => $t, 'total' => $c, 'last_at' => $lastAt[$t] ?? ''];
+        $out[] = ['target' => $t, 'label' => $labels[$t] ?? '', 'total' => $c, 'last_at' => $lastAt[$t] ?? ''];
     }
 
     usort($out, function ($a, $b) {
@@ -138,7 +159,7 @@ function clicks_get_recent(int $limit = 100): array {
 
     $pdo = clicks_try_pdo_sqlite();
     if ($pdo) {
-        $stmt = $pdo->query('SELECT created_at, target, source, ip, user_agent FROM clicks ORDER BY id DESC LIMIT ' . (int)$limit);
+        $stmt = $pdo->query('SELECT created_at, target, label, source, ip, user_agent FROM clicks ORDER BY id DESC LIMIT ' . (int)$limit);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -159,6 +180,7 @@ function clicks_get_recent(int $limit = 100): array {
         $out[] = [
             'created_at' => (string)($row['created_at'] ?? ''),
             'target' => (string)($row['target'] ?? ''),
+            'label' => (string)($row['label'] ?? ''),
             'source' => (string)($row['source'] ?? ''),
             'ip' => (string)($row['ip'] ?? ''),
             'user_agent' => (string)($row['user_agent'] ?? ''),
