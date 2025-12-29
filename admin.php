@@ -44,16 +44,8 @@ function get_basic_auth(): array {
 if ($u === '' && $p === '') send_unauthorized();
 if (!hash_equals($ADMIN_USER, $u) || !hash_equals($ADMIN_PASS, $p)) send_unauthorized();
 
-// Pagination (Klik terbaru)
-$perPage = 50;
-$currentPage = max(1, (int)($_GET['page'] ?? 1));
-$totalRecent = clicks_count_all();
-$totalPages = max(1, (int)ceil($totalRecent / $perPage));
-$currentPage = min($currentPage, $totalPages);
-$offset = ($currentPage - 1) * $perPage;
-
-$summary = clicks_get_summary(200);
-$recent = clicks_get_recent($perPage, $offset);
+$summary = clicks_get_summary(500);
+$recent = clicks_get_recent(1000);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -62,6 +54,7 @@ $recent = clicks_get_recent($perPage, $offset);
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin Tracking Klik | Scholarium</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 
@@ -81,7 +74,7 @@ $recent = clicks_get_recent($perPage, $offset);
     <div class="card-header fw-semibold">Ringkasan (Top klik)</div>
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-striped table-hover mb-0 align-middle">
+        <table id="tableSummary" class="table table-striped table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
               <th style="width: 45%">Nama</th>
@@ -108,7 +101,8 @@ $recent = clicks_get_recent($perPage, $offset);
                     </a>
                   </td>
                   <td class="text-end"><?php echo (int)($row['total'] ?? 0); ?></td>
-                  <td><?php echo htmlspecialchars(format_time_wib((string)($row['last_at'] ?? ''))); ?></td>
+                  <?php $rawLastAt = (string)($row['last_at'] ?? ''); ?>
+                  <td data-order="<?php echo htmlspecialchars($rawLastAt); ?>"><?php echo htmlspecialchars(format_time_wib($rawLastAt)); ?></td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>
@@ -119,19 +113,10 @@ $recent = clicks_get_recent($perPage, $offset);
   </div>
 
   <div class="card">
-    <div class="card-header fw-semibold">
-      Klik terbaru
-      <span class="text-muted fw-normal small">
-        <?php
-          $from = $totalRecent === 0 ? 0 : ($offset + 1);
-          $to = min($totalRecent, $offset + $perPage);
-          echo "(Menampilkan {$from}–{$to} dari {$totalRecent})";
-        ?>
-      </span>
-    </div>
+    <div class="card-header fw-semibold">Klik terbaru</div>
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-striped mb-0 align-middle">
+        <table id="tableRecent" class="table table-striped mb-0 align-middle">
           <thead class="table-light">
             <tr>
               <th style="width: 18%">Waktu (WIB)</th>
@@ -147,7 +132,8 @@ $recent = clicks_get_recent($perPage, $offset);
             <?php else: ?>
               <?php foreach ($recent as $row): ?>
                 <tr>
-                  <td><?php echo htmlspecialchars(format_time_wib((string)($row['created_at'] ?? ''))); ?></td>
+                  <?php $rawCreatedAt = (string)($row['created_at'] ?? ''); ?>
+                  <td data-order="<?php echo htmlspecialchars($rawCreatedAt); ?>"><?php echo htmlspecialchars(format_time_wib($rawCreatedAt)); ?></td>
                   <td class="text-break">
                     <?php
                       $label = trim((string)($row['label'] ?? ''));
@@ -163,26 +149,31 @@ $recent = clicks_get_recent($perPage, $offset);
           </tbody>
         </table>
       </div>
-
-      <?php if ($totalPages > 1): ?>
-        <nav class="p-3" aria-label="Paginasi klik">
-          <ul class="pagination justify-content-center mb-0">
-            <li class="page-item <?php echo $currentPage <= 1 ? 'disabled' : ''; ?>">
-              <a class="page-link" href="?page=<?php echo max(1, $currentPage - 1); ?>" tabindex="-1">Sebelumnya</a>
-            </li>
-            <li class="page-item disabled">
-              <span class="page-link">Halaman <?php echo (int)$currentPage; ?> / <?php echo (int)$totalPages; ?></span>
-            </li>
-            <li class="page-item <?php echo $currentPage >= $totalPages ? 'disabled' : ''; ?>">
-              <a class="page-link" href="?page=<?php echo min($totalPages, $currentPage + 1); ?>">Berikutnya</a>
-            </li>
-          </ul>
-        </nav>
-      <?php endif; ?>
     </div>
   </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+<script>
+  (function () {
+    const idLocaleUrl = 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json';
+
+    function initTable(selector, options) {
+      const el = document.querySelector(selector);
+      if (!el) return;
+      $(selector).DataTable(Object.assign({
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        language: { url: idLocaleUrl }
+      }, options || {}));
+    }
+
+    initTable('#tableSummary', { order: [[2, 'desc']] });
+    initTable('#tableRecent', { order: [[0, 'desc']] });
+  })();
+</script>
 </body>
 </html>
