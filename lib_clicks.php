@@ -154,24 +154,45 @@ function clicks_get_summary(int $limit = 200): array {
     return array_slice($out, 0, $limit);
 }
 
-function clicks_get_recent(int $limit = 100): array {
+function clicks_count_all(): int {
+    $pdo = clicks_try_pdo_sqlite();
+    if ($pdo) {
+        try {
+            $stmt = $pdo->query('SELECT COUNT(*) AS c FROM clicks');
+            $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+            return (int)($row['c'] ?? 0);
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    $path = clicks_jsonl_path();
+    if (!is_file($path)) return 0;
+
+    $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines)) return 0;
+    return count($lines);
+}
+
+function clicks_get_recent(int $limit = 100, int $offset = 0): array {
     $limit = max(1, min($limit, 1000));
+    $offset = max(0, $offset);
 
     $pdo = clicks_try_pdo_sqlite();
     if ($pdo) {
-        $stmt = $pdo->query('SELECT created_at, target, label, source, ip, user_agent FROM clicks ORDER BY id DESC LIMIT ' . (int)$limit);
+        $stmt = $pdo->query('SELECT created_at, target, label, source, ip, user_agent FROM clicks ORDER BY id DESC LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     $path = clicks_jsonl_path();
     if (!is_file($path)) return [];
 
-    // JSONL: read all, take last N (acceptable for small logs)
+    // JSONL: read all, reverse (newest first), then apply offset/limit (acceptable for small logs)
     $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     if (!is_array($lines)) return [];
 
-    $slice = array_slice($lines, -$limit);
-    $slice = array_reverse($slice);
+    $lines = array_reverse($lines);
+    $slice = array_slice($lines, $offset, $limit);
 
     $out = [];
     foreach ($slice as $line) {

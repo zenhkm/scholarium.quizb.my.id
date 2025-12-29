@@ -3,7 +3,7 @@
 // PENTING: ganti kredensial ini sebelum dipakai di produksi.
 
 $ADMIN_USER = 'admin';
-$ADMIN_PASS = 'ganti-password';
+$ADMIN_PASS = '123';
 
 // Lokasi penyimpanan data klik.
 // Direktori ini sebaiknya tidak bisa diakses publik (lihat storage/.htaccess).
