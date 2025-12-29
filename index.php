@@ -380,7 +380,14 @@
                 .file-meta { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
                 
                 /* Action Buttons */
-                .action-group { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; }
+                .action-group {
+                    display: flex;
+                    gap: 0.5rem;
+                    margin-left: auto;
+                    flex-shrink: 0;
+                    position: relative;
+                    z-index: 3;
+                }
                 .btn-action {
                     width: 36px; height: 36px;
                     border-radius: 10px;
@@ -388,8 +395,13 @@
                     border: 1px solid #e2e8f0;
                     background: white; color: #64748b;
                     transition: all 0.2s;
+                    position: relative;
+                    z-index: 3;
                 }
                 .btn-action:hover { background: #f8fafc; color: var(--primary-color); border-color: var(--primary-color); }
+
+                /* Ensure stretched-link overlay stays below action buttons */
+                .stretched-link::after { z-index: 1; }
                 
                 /* Breadcrumb scrollable on mobile */
                 .breadcrumb-scroll {
@@ -559,10 +571,10 @@
 
                         <div class="action-group position-relative z-2">
                             <?php if ($item['type'] == 'FILE'): ?>
-                                <a href="<?php echo htmlspecialchars(getPreviewUrl($item['drive_id'], $item['link'])); ?>" target="_blank" class="btn-action" title="Baca">
+                                <a href="<?php echo htmlspecialchars(getPreviewUrl($item['drive_id'], $item['link'])); ?>" target="_blank" class="btn-action" title="Baca" aria-label="Baca" data-track-label="Baca" rel="noopener">
                                     <i class="fa-regular fa-eye"></i>
                                 </a>
-                                <a href="https://drive.google.com/uc?export=download&id=<?php echo $item['drive_id']; ?>" class="btn-action text-primary" title="Download">
+                                <a href="https://drive.google.com/uc?export=download&id=<?php echo $item['drive_id']; ?>" class="btn-action text-primary" title="Download" aria-label="Download" data-track-label="Download" rel="noopener">
                                     <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                             <?php else: ?>
