@@ -45,6 +45,20 @@ $client->setAuthConfig($serviceAccountPath);
 $client->addScope(Google_Service_Drive::DRIVE_READONLY);
 $service = new Google_Service_Drive($client);
 
+// Logging helper (temporary) - safe file inside config/, rotated manually
+$LOG_PATH = __DIR__ . '/config/download_folder.log';
+function log_msg($m) {
+    global $LOG_PATH;
+    $t = '['.date('c').'] ' . (is_string($m) ? $m : json_encode($m)) . "\n";
+    @file_put_contents($LOG_PATH, $t, FILE_APPEND | LOCK_EX);
+}
+
+log_msg('Starting download request for folder: ' . $folderId);
+
+try {
+    // main flow begins
+
+
 function listFilesRecursive($service, $folderId, $path = '') {
     $files = [];
     $pageToken = null;
@@ -87,13 +101,16 @@ try {
         $folderName = $folderMeta->getName();
     }
 } catch (Exception $e) {
+    log_msg('Permission/metadata error: ' . $e->getMessage());
     http_response_code(403);
-    echo 'Cannot access folder: ' . htmlspecialchars($e->getMessage());
-    echo '\nEnsure the folder is shared with the service account email: ' . htmlspecialchars(getenv('SERVICE_ACCOUNT_EMAIL') ?: 'scholarium@scholarium-482812.iam.gserviceaccount.com');
+    header('Content-Type: text/plain');
+    echo 'Cannot access folder: ' . htmlspecialchars($e->getMessage()) . "\n";
+    echo 'Ensure the folder is shared with the service account email: ' . htmlspecialchars(getenv('SERVICE_ACCOUNT_EMAIL') ?: 'scholarium@scholarium-482812.iam.gserviceaccount.com');
     exit;
 }
 
 $files = listFilesRecursive($service, $folderId);
+log_msg('Files found: ' . count($files));
 if (empty($files)) {
     http_response_code(404);
     echo 'No files found in folder.';
@@ -103,6 +120,7 @@ if (empty($files)) {
 $zip = new ZipArchive();
 $tmpZip = tempnam(sys_get_temp_dir(), 'gdrivezip');
 if ($zip->open($tmpZip, ZipArchive::OVERWRITE) !== true) {
+    log_msg('Failed to create temporary ZIP at ' . $tmpZip);
     http_response_code(500);
     echo 'Failed to create temporary ZIP.';
     exit;
@@ -156,4 +174,16 @@ header('Content-Disposition: attachment; filename="' . $zipName . '"');
 header('Content-Length: ' . filesize($tmpZip));
 readfile($tmpZip);
 unlink($tmpZip);
+log_msg('ZIP delivered successfully: ' . $zipName);
+
+} catch (Throwable $e) {
+    // top-level catch: log and return friendly message
+    log_msg('Unhandled exception: ' . $e->getMessage() . '\n' . $e->getTraceAsString());
+    http_response_code(500);
+    header('Content-Type: text/plain');
+    echo "Internal Server Error. Check log: $LOG_PATH";
+    if (isset($tmpZip) && file_exists($tmpZip)) @unlink($tmpZip);
+    exit;
+}
+
 exit;
