@@ -295,9 +295,12 @@ if (!file_exists($debugCopy) && file_exists($tmpZip)) {
     log_msg('Debug ZIP already exists at: ' . $debugCopy . ' (size=' . (file_exists($debugCopy)?filesize($debugCopy):0) . ')');
 }
 
-// Output ZIP for download with a nicer filename
-$safeFolder = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $folderName ?: $folderId);
-$zipName = 'drive-folder-' . $safeFolder . '.zip';
+// Output ZIP for download with folder name
+$rawFolderName = $folderName ?: $folderId;
+// ASCII-safe filename fallback
+$zipFilenameAscii = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $rawFolderName) . '.zip';
+// UTF-8 encoded filename for modern clients
+$zipFilenameUtf8 = rawurlencode($rawFolderName . '.zip');
 
 // Make sure no previous output buffers corrupt binary stream
 while (ob_get_level()) ob_end_clean();
@@ -313,7 +316,8 @@ if ($filesize === false || $filesize === 0) {
 
 @ini_set('display_errors', '0');
 header('Content-Type: application/zip');
-header('Content-Disposition: attachment; filename="' . $zipName . '"');
+// Provide both ASCII filename and UTF-8 filename*
+header('Content-Disposition: attachment; filename="' . $zipFilenameAscii . '"; filename*=UTF-8\'\'' . $zipFilenameUtf8);
 header('Content-Length: ' . $filesize);
 header('Cache-Control: private');
 
