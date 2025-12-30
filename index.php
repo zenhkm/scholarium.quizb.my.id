@@ -578,8 +578,8 @@
                                     <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                             <?php else: ?>
-                                <a href="https://drive.google.com/uc?export=download&id=<?php echo urlencode((string)$item['drive_id']); ?>" class="btn-action text-primary" title="Download Folder" aria-label="Download Folder" data-track-label="Download Folder" rel="noopener">
-                                    <i class="fa-solid fa-cloud-arrow-down"></i>
+                                <a href="download_folder.php?id=<?php echo urlencode((string)$item['drive_id']); ?>" class="btn-action text-primary" title="Download Folder (ZIP)" aria-label="Download Folder (ZIP)" data-track-label="Download Folder ZIP">
+                                    <i class="fa-solid fa-file-zipper"></i>
                                 </a>
                                 <div class="btn-action border-0 bg-transparent" aria-hidden="true">
                                     <i class="fa-solid fa-chevron-right text-muted opacity-50"></i>
