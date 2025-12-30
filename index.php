@@ -578,7 +578,10 @@
                                     <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                             <?php else: ?>
-                                <div class="btn-action border-0 bg-transparent">
+                                <a href="https://drive.google.com/uc?export=download&id=<?php echo urlencode((string)$item['drive_id']); ?>" class="btn-action text-primary" title="Download Folder" aria-label="Download Folder" data-track-label="Download Folder" rel="noopener">
+                                    <i class="fa-solid fa-cloud-arrow-down"></i>
+                                </a>
+                                <div class="btn-action border-0 bg-transparent" aria-hidden="true">
                                     <i class="fa-solid fa-chevron-right text-muted opacity-50"></i>
                                 </div>
                             <?php endif; ?>
