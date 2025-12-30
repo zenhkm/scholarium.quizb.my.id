@@ -578,8 +578,8 @@
                                     <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                             <?php else: ?>
-                                <a href="download_folder.php?id=<?php echo urlencode((string)$item['drive_id']); ?>" target="_blank" rel="noopener" class="btn-action text-primary" title="Download Folder (ZIP)" aria-label="Download Folder (ZIP)" data-track-label="Download Folder ZIP">
-                                    <i class="fa-solid fa-file-zipper"></i>
+                                <a href="#" class="btn-action text-primary" title="Download Folder (ZIP)" aria-label="Download Folder (ZIP)" data-download-folder-id="<?php echo htmlspecialchars((string)$item['drive_id']); ?>" data-download-folder-name="<?php echo htmlspecialchars((string)$item['name'], ENT_QUOTES); ?>">
+                                    <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                                 <div class="btn-action border-0 bg-transparent" aria-hidden="true">
                                     <i class="fa-solid fa-chevron-right text-muted opacity-50"></i>
@@ -779,5 +779,86 @@
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="click-tracker.js"></script>
+
+    <!-- Download confirmation modal -->
+    <div class="modal fade" id="downloadConfirmModal" tabindex="-1" aria-labelledby="downloadConfirmModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="downloadConfirmModalLabel">Konfirmasi unduhan</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="downloadConfirmBody">Mengambil informasi folder...</div>
+            <div class="mt-2 small text-muted">Jika ukuran besar, pastikan koneksi dan ruang penyimpanan mencukupi.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+            <a href="#" class="btn btn-primary" id="confirmDownloadBtn">Unduh sekarang</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function(){
+      const modalEl = document.getElementById('downloadConfirmModal');
+      const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
+      const bodyEl = document.getElementById('downloadConfirmBody');
+      const confirmBtn = document.getElementById('confirmDownloadBtn');
+      let currentId = null;
+
+      function humanSize(bytes){
+        if (!bytes || bytes <= 0) return 'N/A';
+        const units = ['B','KB','MB','GB','TB'];
+        let i=0; let b = bytes;
+        while (b >= 1024 && i < units.length-1){ b/=1024; i++; }
+        return b.toFixed(2) + ' ' + units[i];
+      }
+
+      document.querySelectorAll('[data-download-folder-id]').forEach(function(el){
+        el.addEventListener('click', function(e){
+          e.preventDefault();
+          const fid = this.getAttribute('data-download-folder-id');
+          const fname = this.getAttribute('data-download-folder-name') || fid;
+          currentId = fid;
+          bodyEl.textContent = 'Mengambil informasi folder...';
+          confirmBtn.setAttribute('href', '#');
+          confirmBtn.classList.add('disabled');
+          if (bsModal) bsModal.show();
+
+          fetch('folder_info.php?id=' + encodeURIComponent(fid))
+            .then(r => r.json())
+            .then(data => {
+              if (data.error) {
+                bodyEl.innerHTML = '<div class="text-danger">Gagal mengambil info: ' + (data.message || data.error) + '</div>';
+                confirmBtn.classList.add('disabled');
+                return;
+              }
+              const human = data.bytes && data.bytes > 0 ? humanSize(data.bytes) : 'Ukuran tidak tersedia (ada ' + data.google_docs + ' file Google Docs)';
+              bodyEl.innerHTML = '<strong>' + escapeHtml(fname) + '</strong><br>' +
+                'Jumlah file: ' + (data.files || 0) + (data.google_docs ? ' (+'+data.google_docs+' Google Docs)' : '') + '<br>' +
+                'Perkiraan ukuran: <strong>' + human + '</strong>';
+              confirmBtn.classList.remove('disabled');
+              confirmBtn.setAttribute('href', 'download_folder.php?id=' + encodeURIComponent(fid));
+              confirmBtn.addEventListener('click', function(){
+                if (bsModal) bsModal.hide();
+                window.open(this.getAttribute('href'), '_blank');
+              }, { once: true });
+            }).catch(err => {
+              bodyEl.innerHTML = '<div class="text-danger">Gagal mengambil info folder.</div>';
+              confirmBtn.classList.add('disabled');
+            });
+        });
+      });
+
+      // small helper for safe text
+      function escapeHtml(str){
+        if (!str) return '';
+        return (str+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+    })();
+    </script>
+
         </body>
         </html>
