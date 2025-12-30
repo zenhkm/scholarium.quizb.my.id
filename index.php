@@ -578,7 +578,7 @@
                                     <i class="fa-solid fa-cloud-arrow-down"></i>
                                 </a>
                             <?php else: ?>
-                                <a href="download_folder.php?id=<?php echo urlencode((string)$item['drive_id']); ?>" class="btn-action text-primary" title="Download Folder (ZIP)" aria-label="Download Folder (ZIP)" data-track-label="Download Folder ZIP">
+                                <a href="download_folder.php?id=<?php echo urlencode((string)$item['drive_id']); ?>" target="_blank" rel="noopener" class="btn-action text-primary" title="Download Folder (ZIP)" aria-label="Download Folder (ZIP)" data-track-label="Download Folder ZIP">
                                     <i class="fa-solid fa-file-zipper"></i>
                                 </a>
                                 <div class="btn-action border-0 bg-transparent" aria-hidden="true">
@@ -623,6 +623,23 @@
 
         <script>
         document.addEventListener("DOMContentLoaded", function() {
+            // show a spinner briefly on folder-download buttons to indicate action
+            document.querySelectorAll('[data-track-label="Download Folder ZIP"]').forEach(function(el){
+                el.addEventListener('click', function(){
+                    try {
+                        var icon = this.querySelector('i');
+                        if (!icon) return;
+                        icon.classList.remove('fa-file-zipper');
+                        icon.classList.add('fa-spinner','fa-spin');
+                        this.classList.add('disabled');
+                        setTimeout(function(){
+                            icon.classList.remove('fa-spinner','fa-spin');
+                            icon.classList.add('fa-file-zipper');
+                            el.classList.remove('disabled');
+                        }, 8000);
+                    } catch (e) {}
+                });
+            });
 
             // Header collapse on scroll (bertahap): sisakan logo + tombol search
             const hero = document.querySelector('.hero-section');
