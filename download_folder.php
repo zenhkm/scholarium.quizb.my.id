@@ -143,6 +143,7 @@ function getExportMimeAndExt($gMime) {
     return $map[$gMime] ?? ['mime' => 'application/pdf', 'ext' => 'pdf'];
 }
 
+$tmpFiles = [];
 foreach ($files as $file) {
     if (!empty($file['is_folder'])) {
         // Add directory entry
@@ -156,8 +157,9 @@ foreach ($files as $file) {
 
         // Create a temporary file to stream into
         $tmpFile = tempnam(sys_get_temp_dir(), 'gfile_');
+        if ($tmpFile === false) throw new Exception('Failed to create temp file in ' . sys_get_temp_dir());
         $fh = fopen($tmpFile, 'wb');
-        if ($fh === false) throw new Exception('Failed to open temp file for writing');
+        if ($fh === false) throw new Exception('Failed to open temp file for writing: ' . $tmpFile);
 
         if (strpos($remoteMime, 'application/vnd.google-apps') === 0) {
             // Export Google Docs types
@@ -203,38 +205,74 @@ foreach ($files as $file) {
             log_msg('Added file to ZIP: ' . $safeEntryPath);
         }
 
-        // cleanup temp file
-        @unlink($tmpFile);
+        // keep temp files until ZIP successfully closed
+        $tmpFiles[] = $tmpFile;
 
     } catch (Exception $e) {
         // Skip problematic file but record an entry
         log_msg('Error downloading file ' . $file['id'] . ': ' . $e->getMessage());
-        $zip->addFromString($safeEntryPath . '.ERROR.txt', 'Failed to download: ' . $e->getMessage());
+        $zip->addFromString((isset($safeEntryPath) ? $safeEntryPath : $file['id']) . '.ERROR.txt', 'Failed to download: ' . $e->getMessage());
     }
 }
 
-$zip->close();
+// Before closing, log temp files and environment
+log_msg('About to close ZIP (numFiles=' . $zip->numFiles . ', tmpFiles=' . count($tmpFiles) . ')');
+log_msg('sys_get_temp_dir=' . sys_get_temp_dir() . ', tmp example=' . (count($tmpFiles)? $tmpFiles[0] : 'none'));
+log_msg('open_basedir=' . var_export(ini_get('open_basedir'), true));
+log_msg('is_writable(temp_dir)=' . (is_writable(sys_get_temp_dir()) ? 'yes' : 'no'));
+
+$closeResult = $zip->close();
+log_msg('zip->close returned: ' . var_export($closeResult, true));
+
+// If close failed or file missing, attempt retry creating zip directly in config dir
+if (!$closeResult || !file_exists($tmpZip) || filesize($tmpZip) === 0) {
+    log_msg('ZIP close failed or tmp zip missing/empty; attempting fallback: create ZIP in config/ directory');
+    $altZip = __DIR__ . '/config/fallback-drive-' . uniqid() . '.zip';
+    $z2 = new ZipArchive();
+    if ($z2->open($altZip, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        log_msg('Fallback: cannot open alt zip at ' . $altZip);
+        // log environment details
+        log_msg('Disk free space temp_dir=' . @disk_free_space(sys_get_temp_dir()) . ', config_dir_free=' . @disk_free_space(__DIR__ . '/config'));
+    } else {
+        foreach ($tmpFiles as $tf) {
+            if (file_exists($tf)) {
+                // derive entry name by reading a map? we stored entry names via zip->addFile; we need a mapping
+                // For simplicity, add file using its basename; this loses folder structure but preserves content for debugging
+                $z2->addFile($tf, basename($tf));
+            } else {
+                log_msg('Fallback: tmp file missing: ' . $tf);
+            }
+        }
+        $z2->close();
+        if (file_exists($altZip)) {
+            log_msg('Fallback ZIP created at ' . $altZip . ' size=' . filesize($altZip));
+            $tmpZip = $altZip; // use fallback as the file to deliver
+        } else {
+            log_msg('Fallback ZIP creation failed');
+        }
+    }
+}
 
 // Inspect ZIP and log entries for debugging
 $zipEntries = [];
 $za = new ZipArchive();
-if ($za->open($tmpZip) === true) {
+if (file_exists($tmpZip) && $za->open($tmpZip) === true) {
     for ($i = 0; $i < $za->numFiles; $i++) {
         $zipEntries[] = $za->getNameIndex($i);
     }
     $za->close();
     log_msg('ZIP entries count: ' . count($zipEntries) . ', names: ' . json_encode(array_slice($zipEntries, 0, 200)));
 } else {
-    log_msg('Failed to open tmp zip for inspection: ' . $tmpZip);
+    log_msg('Failed to open tmp zip for inspection: ' . $tmpZip . ' exists=' . (file_exists($tmpZip)?'yes':'no'));
 }
 
 // Save debug copy (do not overwrite existing) for manual inspection
 $debugCopy = __DIR__ . '/config/debug-drive-' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $folderId) . '.zip';
-if (!file_exists($debugCopy)) {
+if (!file_exists($debugCopy) && file_exists($tmpZip)) {
     copy($tmpZip, $debugCopy);
     log_msg('Saved debug ZIP copy to: ' . $debugCopy . ' (size=' . filesize($debugCopy) . ')');
 } else {
-    log_msg('Debug ZIP already exists at: ' . $debugCopy . ' (size=' . filesize($debugCopy) . ')');
+    log_msg('Debug ZIP already exists at: ' . $debugCopy . ' (size=' . (file_exists($debugCopy)?filesize($debugCopy):0) . ')');
 }
 
 // Output ZIP for download with a nicer filename
@@ -265,7 +303,15 @@ if ($fp) {
     fpassthru($fp);
     fclose($fp);
     log_msg('ZIP delivered successfully: ' . $zipName . ' (tmp=' . $tmpZip . ', size=' . $filesize . ')');
-    // keep debug copy; remove tmp file to free space
+
+    // cleanup temporary files used for assembling ZIP
+    $deleted = 0;
+    foreach ($tmpFiles as $tf) {
+        if (file_exists($tf)) { @unlink($tf); $deleted++; }
+    }
+    log_msg('Cleaned up tmp files: ' . $deleted . '/' . count($tmpFiles));
+
+    // remove the tmp ZIP file (we saved debug copy earlier)
     @unlink($tmpZip);
 } else {
     log_msg('Failed to open tmp zip for streaming: ' . $tmpZip);
