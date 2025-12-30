@@ -97,6 +97,22 @@ if (!class_exists('ZipArchive')) {
 }
 set_time_limit(0);
 
+// Determine working temp directory (prefer system temp, but fall back to project tmp if necessary)
+$systemTmp = sys_get_temp_dir();
+$open_basedir = ini_get('open_basedir') ?: '';
+$workDir = $systemTmp;
+$canUseSystemTmp = is_writable($systemTmp) && (!$open_basedir || strpos($open_basedir, $systemTmp) !== false);
+if (!$canUseSystemTmp) {
+    $altTmp = __DIR__ . '/tmp';
+    if (!is_dir($altTmp)) @mkdir($altTmp, 0755, true);
+    if (is_writable($altTmp)) {
+        $workDir = $altTmp;
+        log_msg('Using project tmp dir for temp files: ' . $workDir);
+    } else {
+        log_msg('Project tmp dir not writable: ' . $altTmp . ' and system tmp not usable: ' . $systemTmp);
+    }
+}
+
 // Test we can access folder metadata (permission check)
 try {
     $folderMeta = $service->files->get($folderId, ['fields' => 'id,name,mimeType']);
@@ -124,7 +140,11 @@ if (empty($files)) {
 }
 
 $zip = new ZipArchive();
-$tmpZip = tempnam(sys_get_temp_dir(), 'gdrivezip');
+$tmpZip = tempnam($workDir, 'gdrivezip');
+if ($tmpZip === false) {
+    log_msg('tempnam failed in workDir=' . $workDir . ' falling back to sys tmp');
+    $tmpZip = tempnam($systemTmp, 'gdrivezip');
+}
 if ($zip->open($tmpZip, ZipArchive::OVERWRITE) !== true) {
     log_msg('Failed to create temporary ZIP at ' . $tmpZip);
     http_response_code(500);
@@ -156,8 +176,8 @@ foreach ($files as $file) {
         log_msg('Starting download of file: ' . $file['id'] . ' -> ' . $safeEntryPath . ' (mime=' . $remoteMime . ')');
 
         // Create a temporary file to stream into
-        $tmpFile = tempnam(sys_get_temp_dir(), 'gfile_');
-        if ($tmpFile === false) throw new Exception('Failed to create temp file in ' . sys_get_temp_dir());
+        $tmpFile = tempnam($workDir, 'gfile_');
+        if ($tmpFile === false) throw new Exception('Failed to create temp file in workDir=' . $workDir);
         $fh = fopen($tmpFile, 'wb');
         if ($fh === false) throw new Exception('Failed to open temp file for writing: ' . $tmpFile);
 
