@@ -145,21 +145,65 @@ foreach ($files as $file) {
     }
     try {
         $remoteMime = $file['mimeType'] ?? '';
+        $safeEntryPath = str_replace('\\', '/', $file['path']); // ensure forward slashes in ZIP
+        log_msg('Starting download of file: ' . $file['id'] . ' -> ' . $safeEntryPath . ' (mime=' . $remoteMime . ')');
+
+        // Create a temporary file to stream into
+        $tmpFile = tempnam(sys_get_temp_dir(), 'gfile_');
+        $fh = fopen($tmpFile, 'wb');
+        if ($fh === false) throw new Exception('Failed to open temp file for writing');
+
         if (strpos($remoteMime, 'application/vnd.google-apps') === 0) {
             // Export Google Docs types
             $export = getExportMimeAndExt($remoteMime);
             $resp = $service->files->export($file['id'], $export['mime'], ['alt' => 'media']);
-            $data = $resp->getBody()->getContents();
-            $entryName = $file['path'] . '.' . $export['ext'];
-            $zip->addFromString($entryName, $data);
+            $body = $resp->getBody();
+            // Stream body to temp file
+            if (method_exists($body, 'detach')) {
+                $res = $body->detach();
+                if (is_resource($res)) {
+                    stream_copy_to_stream($res, $fh);
+                    @fclose($res);
+                } else {
+                    // fallback
+                    fwrite($fh, $body->getContents());
+                }
+            } else {
+                fwrite($fh, $body->getContents());
+            }
+            fclose($fh);
+
+            $entryName = $safeEntryPath . '.' . $export['ext'];
+            $zip->addFile($tmpFile, $entryName);
+            log_msg('Added exported Google Doc to ZIP: ' . $entryName);
         } else {
+            // Regular file: stream and add
             $resp = $service->files->get($file['id'], ['alt' => 'media']);
-            $data = $resp->getBody()->getContents();
-            $zip->addFromString($file['path'], $data);
+            $body = $resp->getBody();
+            if (method_exists($body, 'detach')) {
+                $res = $body->detach();
+                if (is_resource($res)) {
+                    stream_copy_to_stream($res, $fh);
+                    @fclose($res);
+                } else {
+                    fwrite($fh, $body->getContents());
+                }
+            } else {
+                fwrite($fh, $body->getContents());
+            }
+            fclose($fh);
+
+            $zip->addFile($tmpFile, $safeEntryPath);
+            log_msg('Added file to ZIP: ' . $safeEntryPath);
         }
+
+        // cleanup temp file
+        @unlink($tmpFile);
+
     } catch (Exception $e) {
         // Skip problematic file but record an entry
-        $zip->addFromString($file['path'] . '.ERROR.txt', 'Failed to download: ' . $e->getMessage());
+        log_msg('Error downloading file ' . $file['id'] . ': ' . $e->getMessage());
+        $zip->addFromString($safeEntryPath . '.ERROR.txt', 'Failed to download: ' . $e->getMessage());
     }
 }
 
