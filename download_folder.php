@@ -18,6 +18,12 @@ if (!$found) {
     exit;
 }
 
+// Prevent PHP warnings/deprecation messages from being printed (they corrupt ZIP output)
+@ini_set('display_errors', '0');
+@ini_set('log_errors', '1');
+@ini_set('error_log', __DIR__ . '/config/download_folder_php_errors.log');
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
 // Path to service account JSON
 $serviceAccountPath = __DIR__ . '/config/service-account.json';
 
@@ -235,12 +241,38 @@ if (!file_exists($debugCopy)) {
 $safeFolder = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $folderName ?: $folderId);
 $zipName = 'drive-folder-' . $safeFolder . '.zip';
 
+// Make sure no previous output buffers corrupt binary stream
+while (ob_get_level()) ob_end_clean();
+
+// Ensure file size valid and suppress further error display during streaming
+$filesize = @filesize($tmpZip);
+if ($filesize === false || $filesize === 0) {
+    log_msg('Refusing to send empty or invalid ZIP (size=' . var_export($filesize, true) . ') at ' . $tmpZip);
+    header('Content-Type: text/plain');
+    echo "Server error: created ZIP is empty. Periksa log: $LOG_PATH";
+    exit;
+}
+
+@ini_set('display_errors', '0');
 header('Content-Type: application/zip');
 header('Content-Disposition: attachment; filename="' . $zipName . '"');
-header('Content-Length: ' . filesize($tmpZip));
-readfile($tmpZip);
-// keep tmp zip for debugging (do not unlink immediately)
-log_msg('ZIP delivered successfully: ' . $zipName . ' (tmp=' . $tmpZip . ', size=' . filesize($tmpZip) . ')');
+header('Content-Length: ' . $filesize);
+header('Cache-Control: private');
+
+$fp = fopen($tmpZip, 'rb');
+if ($fp) {
+    // stream file to client
+    fpassthru($fp);
+    fclose($fp);
+    log_msg('ZIP delivered successfully: ' . $zipName . ' (tmp=' . $tmpZip . ', size=' . $filesize . ')');
+    // keep debug copy; remove tmp file to free space
+    @unlink($tmpZip);
+} else {
+    log_msg('Failed to open tmp zip for streaming: ' . $tmpZip);
+    header('Content-Type: text/plain');
+    echo "Server error: unable to open ZIP for streaming. Check log: $LOG_PATH";
+    exit;
+}
 
 } catch (Throwable $e) {
     // top-level catch: log and return friendly message
