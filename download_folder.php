@@ -209,6 +209,28 @@ foreach ($files as $file) {
 
 $zip->close();
 
+// Inspect ZIP and log entries for debugging
+$zipEntries = [];
+$za = new ZipArchive();
+if ($za->open($tmpZip) === true) {
+    for ($i = 0; $i < $za->numFiles; $i++) {
+        $zipEntries[] = $za->getNameIndex($i);
+    }
+    $za->close();
+    log_msg('ZIP entries count: ' . count($zipEntries) . ', names: ' . json_encode(array_slice($zipEntries, 0, 200)));
+} else {
+    log_msg('Failed to open tmp zip for inspection: ' . $tmpZip);
+}
+
+// Save debug copy (do not overwrite existing) for manual inspection
+$debugCopy = __DIR__ . '/config/debug-drive-' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $folderId) . '.zip';
+if (!file_exists($debugCopy)) {
+    copy($tmpZip, $debugCopy);
+    log_msg('Saved debug ZIP copy to: ' . $debugCopy . ' (size=' . filesize($debugCopy) . ')');
+} else {
+    log_msg('Debug ZIP already exists at: ' . $debugCopy . ' (size=' . filesize($debugCopy) . ')');
+}
+
 // Output ZIP for download with a nicer filename
 $safeFolder = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $folderName ?: $folderId);
 $zipName = 'drive-folder-' . $safeFolder . '.zip';
@@ -217,8 +239,8 @@ header('Content-Type: application/zip');
 header('Content-Disposition: attachment; filename="' . $zipName . '"');
 header('Content-Length: ' . filesize($tmpZip));
 readfile($tmpZip);
-unlink($tmpZip);
-log_msg('ZIP delivered successfully: ' . $zipName);
+// keep tmp zip for debugging (do not unlink immediately)
+log_msg('ZIP delivered successfully: ' . $zipName . ' (tmp=' . $tmpZip . ', size=' . filesize($tmpZip) . ')');
 
 } catch (Throwable $e) {
     // top-level catch: log and return friendly message
